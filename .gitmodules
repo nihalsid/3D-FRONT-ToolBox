@@ -1,0 +1,3 @@
+[submodule "scripts/3d-front-analyzer"]
+	path = scripts/3d-front-analyzer
+	url = git@github.com:nihalsid/3d-front-analyzer.git
