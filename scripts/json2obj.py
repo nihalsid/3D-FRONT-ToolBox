@@ -11,7 +11,7 @@ import numpy as np
 import trimesh
 from tqdm import tqdm
 
-from scripts.generate_random_color import generate_new_color, generate_color_from_id
+from generate_random_color import generate_new_color, generate_color_from_id
 
 
 def split_path(paths):
@@ -63,27 +63,35 @@ def search_category_mapping(category_mapping, category):
 
 def list_all_mesh_categories(root_json_path, files, root_future_path, save_path):
     mesh_type = []
+    room_types = []
     for m in tqdm(files):
         with open(root_json_path + '/' + m, 'r', encoding='utf-8') as f:
             data = json.load(f)
+            scene = data['scene']
+            room = scene['room']
             for mm in data['mesh']:
                 mesh_type.append(mm['type'])
-
+            for r in room:
+                room_id = r['instanceid']
+                room_types.append(room_id.split('-')[0])
     mesh_type = list(set(mesh_type))
-    print(len(mesh_type))
-    print(mesh_type)
+    room_types = list(set(room_types))
+    print(len(room_types), room_types)
+    print(len(mesh_type), mesh_type)
 
 
 def process_file_list(root_json_path, files, root_future_path, save_path):
     category_mapping = json.loads(Path("3d-front-analyzer/resources/category_mapping.json").read_text())
     current_colors = []
 
+    valid_room_types = ['DiningRoom', 'Bedroom', 'LivingDiningRoom', 'KidsRoom', 'MasterBedroom', 'LivingRoom', 'ElderlyRoom', 'SecondBedroom', 'Library', 'NannyRoom']
+
     for c in category_mapping:
         # c['color'] = generate_new_color(current_colors)
         c['color'] = generate_color_from_id(c['id'])
         current_colors.append(c['color'])
 
-    for m in files:
+    for m in tqdm(files):
         with open(root_json_path + '/' + m, 'r', encoding='utf-8') as f:
             data = json.load(f)
             model_jid = []
@@ -117,6 +125,9 @@ def process_file_list(root_json_path, files, root_future_path, save_path):
 
             for r in room:
                 room_id = r['instanceid']
+                room_type = room_id.split('-')[0]
+                if room_type not in valid_room_types:
+                    continue
                 meshes = []
                 if not os.path.exists(save_path + '/' + m[:-5] + '/' + room_id):
                     os.mkdir(save_path + '/' + m[:-5] + '/' + room_id)
@@ -178,6 +189,13 @@ def process_file_list(root_json_path, files, root_future_path, save_path):
 
                 if len(meshes) > 0:
                     temp = trimesh.util.concatenate(meshes)
+                    bbox = temp.bounding_box.bounds
+                    loc = (bbox[0] + bbox[1]) / 2
+                    scale = (bbox[1] - bbox[0])[1]
+                    temp.apply_translation(-loc)
+                    temp.apply_scale(2.6 / scale)
+                    bbox = temp.bounding_box.bounds
+                    temp.apply_translation(-bbox[0])
                     temp.export(save_path + '/' + m[:-5] + '/' + room_id + '/mesh.obj')
 
 
@@ -203,9 +221,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # files = os.listdir(args.json_path)
+    files = os.listdir(args.json_path)
     # files = ["6d8db384-1df1-46a5-91c6-e34a48275c2c.json", "2be2628f-bec8-4217-9660-805b1c8a1baa.json"]
-    files = ["2be2628f-bec8-4217-9660-805b1c8a1baa.json"]
+    # files = ["2be2628f-bec8-4217-9660-805b1c8a1baa.json"]
+    # files = ['6d8db384-1df1-46a5-91c6-e34a48275c2c.json', 'c33366ef-4801-4764-8ad5-ebbf2e36337a.json', 'fd0e8518-9dc9-4922-a4b9-dc00c825bd21.json', 'fd0e8518-9dc9-4922-a4b9-dc00c825bd21.json', 'fd0e8518-9dc9-4922-a4b9-dc00c825bd21.json',
+    #  'fe717e28-bb7e-4705-a176-b78780ffd7ad.json', '1652d2f7-4a27-402e-8f22-0b0625256e8e.json', '1652d2f7-4a27-402e-8f22-0b0625256e8e.json', '7ed12290-2536-4fff-92d2-0f32525f949b.json', '2a001497-73d9-4172-a89a-90ce19d94ed2.json',
+    #  '6bde9708-fd42-4cf1-bdf1-a291639a71cd.json', 'e19d78e4-6fbf-4e68-9ad9-e12d1edfabf4.json', '73ccd93b-b2eb-4456-9a64-816006c825f9.json']
 
     if not os.path.exists(args.save_path):
         os.mkdir(args.save_path)
