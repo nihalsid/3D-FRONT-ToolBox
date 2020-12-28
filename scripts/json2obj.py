@@ -10,8 +10,11 @@ import igl
 import numpy as np
 import trimesh
 from tqdm import tqdm
-
+from intersections import slice_mesh_plane
 from generate_random_color import generate_new_color, generate_color_from_id
+
+
+proc_id = None
 
 
 def split_path(paths):
@@ -81,9 +84,9 @@ def list_all_mesh_categories(root_json_path, files, root_future_path, save_path)
 
 
 def process_file_list(root_json_path, files, root_future_path, save_path):
+    global proc_id
     category_mapping = json.loads(Path("3d-front-analyzer/resources/category_mapping.json").read_text())
     current_colors = []
-
     valid_room_types = ['DiningRoom', 'Bedroom', 'LivingDiningRoom', 'KidsRoom', 'MasterBedroom', 'LivingRoom', 'ElderlyRoom', 'SecondBedroom', 'Library', 'NannyRoom']
 
     for c in category_mapping:
@@ -175,25 +178,69 @@ def process_file_list(root_json_path, files, root_future_path, save_path):
                         v = np.transpose(v)
                         v = np.matmul(R, v)
                         v = np.transpose(v)
-
                     v = v + pos
                     vertex_colors = np.zeros_like(v)
                     for axis_idx in range(3):
                         vertex_colors[:, axis_idx] = color[axis_idx]
+                    if v.shape[0] == 0:
+                        continue
                     if type == 'f':
                         write_obj_with_tex(save_path + '/' + m[:-5] + '/' + room_id + '/' + str(number) + '_' + model_jid[idx] + '.obj', v, faces, vt, ftc, root_future_path + '/' + model_jid[idx] + '/texture.png')
-                        meshes.append(trimesh.Trimesh(v, faces, vertex_colors=vertex_colors))
-                        number = number + 1
+                        try:
+                            appended_mesh = trimesh.Trimesh(v, faces, vertex_colors=vertex_colors)
+                            #scale
+                            bbox = appended_mesh.bounding_box.bounds
+                            scale = bbox[1][1] - bbox[0][1]
+                            if scale > 2.6:
+                                origin = bbox[0]
+                                appended_mesh.apply_translation(-(bbox[0] + bbox[1]) / 2)
+                                appended_mesh.apply_scale(2.6 / scale)
+                                appended_mesh.apply_translation(origin - appended_mesh.bounding_box.bounds[0])
+                            # ground
+                            bbox = appended_mesh.bounding_box.bounds
+                            y_bounds = bbox[0][1]
+                            if y_bounds < 0:
+                                appended_mesh.apply_translation(np.array([0, -y_bounds, 0]))
+                            meshes.append(appended_mesh)
+                            number = number + 1
+                        except IndexError:
+                            continue
                     else:
-                        meshes.append(trimesh.Trimesh(v, faces, vertex_colors=vertex_colors))
+                        try:
+                            appended_mesh = trimesh.Trimesh(v, faces, vertex_colors=vertex_colors)
+                            y_bounds = appended_mesh.bounding_box.bounds[0][1]
+                            if y_bounds < 0:
+                                appended_mesh.apply_translation(np.array([0, -y_bounds, 0]))
+                            meshes.append(appended_mesh)
+                        except IndexError:
+                            continue
 
                 if len(meshes) > 0:
                     temp = trimesh.util.concatenate(meshes)
+                    bbox = temp.bounding_box.bounds
+                    # translate to origin
+                    temp.apply_translation(-bbox[0])
+
+                    # temporary save
+                    # bbox = temp.bounding_box.bounds
+                    # temp.apply_translation(-bbox[0])
+                    # temp.export(save_path + '/' + m[:-5] + '/' + room_id + '/mesh_before.obj')
+
+                    # crop
+                    bbox = temp.bounding_box.bounds
+                    scaled_extents = np.array([(bbox[1] - bbox[0])[0] * 1.125, 2.6025, (bbox[1] - bbox[0])[2] * 1.125])
+                    box = trimesh.creation.box(extents=scaled_extents)
+                    box.apply_translation(scaled_extents / 2)
+                    temp = slice_mesh_plane(mesh=temp, plane_normal=-box.facets_normal, plane_origin=box.facets_origin)
+
+                    # recenter
                     bbox = temp.bounding_box.bounds
                     loc = (bbox[0] + bbox[1]) / 2
                     scale = (bbox[1] - bbox[0])[1]
                     temp.apply_translation(-loc)
                     temp.apply_scale(2.6 / scale)
+
+                    # start at 0
                     bbox = temp.bounding_box.bounds
                     temp.apply_translation(-bbox[0])
                     temp.export(save_path + '/' + m[:-5] + '/' + room_id + '/mesh.obj')
@@ -219,15 +266,30 @@ if __name__ == "__main__":
         help='path to save result dir'
     )
 
+    parser.add_argument(
+        '--num_proc',
+        default=1,
+        type=int
+    )
+
+    parser.add_argument(
+        '--proc',
+        default=0,
+        type=int
+    )
+
     args = parser.parse_args()
 
     files = os.listdir(args.json_path)
+    # bad_files = Path("bad_meshes.txt").read_text().splitlines()
+    # files = [f.split('/')[0]+'.json' for f in bad_files]
     # files = ["6d8db384-1df1-46a5-91c6-e34a48275c2c.json", "2be2628f-bec8-4217-9660-805b1c8a1baa.json"]
     # files = ["2be2628f-bec8-4217-9660-805b1c8a1baa.json"]
     # files = ['6d8db384-1df1-46a5-91c6-e34a48275c2c.json', 'c33366ef-4801-4764-8ad5-ebbf2e36337a.json', 'fd0e8518-9dc9-4922-a4b9-dc00c825bd21.json', 'fd0e8518-9dc9-4922-a4b9-dc00c825bd21.json', 'fd0e8518-9dc9-4922-a4b9-dc00c825bd21.json',
     #  'fe717e28-bb7e-4705-a176-b78780ffd7ad.json', '1652d2f7-4a27-402e-8f22-0b0625256e8e.json', '1652d2f7-4a27-402e-8f22-0b0625256e8e.json', '7ed12290-2536-4fff-92d2-0f32525f949b.json', '2a001497-73d9-4172-a89a-90ce19d94ed2.json',
     #  '6bde9708-fd42-4cf1-bdf1-a291639a71cd.json', 'e19d78e4-6fbf-4e68-9ad9-e12d1edfabf4.json', '73ccd93b-b2eb-4456-9a64-816006c825f9.json']
-
+    files = [x for i, x in enumerate(files) if i % args.num_proc == args.proc]
+    proc_id = args.proc
     if not os.path.exists(args.save_path):
         os.mkdir(args.save_path)
 
