@@ -57,7 +57,7 @@ if __name__=="__main__":
 
     args = parser.parse_args()
     list_of_sdfs = sorted([x for x in Path(args.sdf_dir).iterdir() if x.name.endswith(".sdf")], key=lambda x:x.name)
-    list_of_sdfs = [x for i, x in enumerate(list_of_sdfs) if i % args.num_proc == args.proc][:1]
+    list_of_sdfs = [x for i, x in enumerate(list_of_sdfs) if i % args.num_proc == args.proc]
     Path(args.output_dir).mkdir(exist_ok=True, parents=True)
 
     for psdf in tqdm(list_of_sdfs):
