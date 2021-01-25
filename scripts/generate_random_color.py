@@ -24,6 +24,6 @@ def generate_new_color(existing_colors, pastel_factor=0.5):
 
 
 def generate_color_from_id(id):
-    color_id = 64 * id
+    color_id = 32 * id
     color = [(color_id % 256) / 255, ((color_id // 256) % 256) / 255, ((color_id // 256 // 256) % 256) / 255]
     return color

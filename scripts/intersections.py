@@ -550,10 +550,9 @@ def slice_faces_plane(vertices,
         # Add new vertices to existing vertices, triangulate quads, and add the
         # resulting triangles to the new faces
         new_vertices = np.append(new_vertices, new_quad_vertices, axis=0)
-        new_colors = np.append(new_colors, np.zeros((new_quad_vertices.shape[0], 4)), axis=0)
         new_tri_faces_from_quads = geometry.triangulate_quads(new_quad_faces)
         new_faces = np.append(new_faces, new_tri_faces_from_quads, axis=0)
-
+        new_colors = np.append(new_colors, np.zeros((new_quad_vertices.shape[0], 4)), axis=0)
     # Handle the case where a new triangle is formed by the intersection
     # First, extract the intersection points belonging to a new triangle
     tri_int_points = int_points[(signs_sum >= 0)[onedge], :, :]
@@ -594,9 +593,17 @@ def slice_faces_plane(vertices,
 
     # use the unique indexes for our final vertex and faces
     final_vert = new_vertices[unique]
-    final_colors = new_colors[unique]
     final_face = inverse.reshape((-1, 3))
-
+    final_colors = new_colors[unique]
+    for fidx in range(final_face.shape[0]):
+        face_colors = final_colors[final_face[fidx, :], :]
+        zero_face_color_mask = (face_colors == np.zeros_like(face_colors)).all(axis=1)
+        if zero_face_color_mask.any():
+            non_zero_face_colors = face_colors[~zero_face_color_mask, :]
+            if non_zero_face_colors.shape[0] > 0:
+                uniques, counts = np.unique(non_zero_face_colors, return_counts=True, axis=0)
+                most_frequent_color = uniques[np.argmax(counts), :]
+                final_colors[final_face[fidx, :][zero_face_color_mask], :] = most_frequent_color
     return final_vert, final_colors, final_face
 
 
