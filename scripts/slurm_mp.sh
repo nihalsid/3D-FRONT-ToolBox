@@ -4,7 +4,7 @@
 ##SBATCH --nodes=1
 ##SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=12G
+#SBATCH --mem-per-cpu=20G
 #SBATCH --exclude=moria
 
 cd /rhome/ysiddiqui/3D-FRONT-ToolBox/scripts
